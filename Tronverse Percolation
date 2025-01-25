@@ -1,0 +1,92 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.animation as animation
+
+# Parameters
+expansion_speed = 0.1  # Radius growth per time unit
+lambda0 = 0.05         # Initial sphere creation rate (events per time unit)
+k = 0.03               # Exponential growth rate of creation events
+max_spheres = 50       # Maximum number of spheres to prevent overload
+simulation_time = 100  # Total simulation time
+time_step = 1          # Time per animation frame
+
+# Each sphere is [position, creation_time, stop_time (None if growing)]
+spheres = []
+
+# Setup 3D plot
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
+ax.set_xlim(0, 10)
+ax.set_ylim(0, 10)
+ax.set_zlim(0, 10)
+scatter = ax.scatter([], [], [], s=[], alpha=0.5)  # Transparent spheres
+
+def init():
+    scatter._offsets3d = (np.array([]), np.array([]), np.array([]))
+    scatter.set_sizes(np.array([]))
+    return scatter,
+
+def update(frame):
+    global spheres
+    current_time = frame * time_step
+    
+    # Create new sphere with exponential probability
+    if len(spheres) < max_spheres:
+        rate = lambda0 * np.exp(k * current_time)
+        prob = 1 - np.exp(-rate * time_step)
+        if np.random.rand() < prob:
+            overlap = True
+            attempts = 0
+            # Find non-overlapping position
+            while overlap and attempts < 1000:
+                pos = np.random.rand(3) * 9 + 0.5  # Avoid edges
+                overlap = False
+                for s in spheres:
+                    existing_pos, create, stop = s
+                    existing_radius = expansion_speed * ((current_time - create) if stop is None else (stop - create))
+                    if np.linalg.norm(pos - existing_pos) < existing_radius:
+                        overlap = True
+                        break
+                attempts += 1
+            if not overlap:
+                spheres.append([pos, current_time, None])
+    
+    # Update sphere radii and check collisions
+    for i in range(len(spheres)):
+        pos_i, create_i, stop_i = spheres[i]
+        if stop_i is not None:
+            continue
+        radius_i = expansion_speed * (current_time - create_i)
+        # Check against other spheres
+        for j in range(i + 1, len(spheres)):
+            pos_j, create_j, stop_j = spheres[j]
+            if stop_j is not None:
+                continue
+            radius_j = expansion_speed * (current_time - create_j)
+            distance = np.linalg.norm(pos_i - pos_j)
+            if distance < (radius_i + radius_j):
+                # Stop both spheres at collision time
+                spheres[i][2] = current_time
+                spheres[j][2] = current_time
+    
+    # Prepare visualization data
+    positions = []
+    sizes = []
+    for s in spheres:
+        pos, create, stop = s
+        radius = expansion_speed * ((current_time - create) if stop is None else (stop - create))
+        positions.append(pos)
+        sizes.append((2 * radius) ** 2)  # Area proportional to radius squared
+    
+    if positions:
+        positions = np.array(positions)
+        scatter._offsets3d = (positions[:,0], positions[:,1], positions[:,2])
+        scatter.set_sizes(sizes)
+    return scatter,
+
+# Animate the simulation
+ani = animation.FuncAnimation(fig, update, frames=range(int(simulation_time / time_step)),
+                              init_func=init, blit=False, interval=50, repeat=False)
+
+plt.show()
