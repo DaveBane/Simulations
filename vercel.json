@@ -1,4 +1,6 @@
 {
   "version": 2,
-  "rewrites": [{ "source": "/api/runSimulation", "destination": "/api/runSimulation.js" }]
+  "rewrites": [
+    { "source": "/api/runSimulation", "destination": "/api/runSimulation.js" }
+  ]
 }
