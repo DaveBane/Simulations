@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expanding Sphere with Boundary Clipping</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <!-- Load Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Create the scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff); // White background
+
+        // Create the camera
+        const camera = new THREE.PerspectiveCamera(
+            75, // Field of view
+            window.innerWidth / window.innerHeight, // Aspect ratio
+            0.1, // Near clipping plane
+            1000 // Far clipping plane
+        );
+        camera.position.z = 15; // Position camera to view the entire boundary
+        camera.lookAt(0, 0, 0);
+
+        // Create the renderer
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Define boundary radius
+        const boundaryRadius = 5;
+
+        // Add boundary sphere (wireframe)
+        const boundaryGeometry = new THREE.SphereGeometry(boundaryRadius, 32, 32);
+        const boundaryMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true });
+        const boundarySphere = new THREE.Mesh(boundaryGeometry, boundaryMaterial);
+        scene.add(boundarySphere);
+
+        // Create the expanding sphere with custom shader for clipping
+        const geometry = new THREE.SphereGeometry(1, 32, 32); // Initial radius 1
+        const material = new THREE.MeshPhongMaterial({
+            color: 0x00ff00, // Green
+            shininess: 100 // Shiny surface
+        });
+
+        // Modify the material's shader to clip outside the boundary
+        material.onBeforeCompile = function(shader) {
+            // Add the boundary radius as a uniform
+            shader.uniforms.boundaryRadius = { value: boundaryRadius };
+
+            // Prepend varying and compute world position in vertex shader
+            shader.vertexShader = 'varying vec3 vWorldPosition;\n' + shader.vertexShader;
+            shader.vertexShader = shader.vertexShader.replace(
+                'void main() {',
+                'void main() {\n    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;'
+            );
+
+            // Prepend uniform and add discard logic in fragment shader
+            shader.fragmentShader = 'uniform float boundaryRadius;\nvarying vec3 vWorldPosition;\n' + shader.fragmentShader;
+            shader.fragmentShader = shader.fragmentShader.replace(
+                'void main() {',
+                'void main() {\n    float distanceToCenter = length(vWorldPosition);\n    if (distanceToCenter > boundaryRadius) {\n        discard;\n    }'
+            );
+        };
+
+        const sphere = new THREE.Mesh(geometry, material);
+        scene.add(sphere);
+
+        // Add lights for shading
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(1, 1, 1).normalize();
+        scene.add(directionalLight);
+
+        // Function to get a random point inside the boundary sphere
+        function getRandomPointInSphere(radius) {
+            let x, y, z, d;
+            do {
+                x = (Math.random() - 0.5) * 2 * radius;
+                y = (Math.random() - 0.5) * 2 * radius;
+                z = (Math.random() - 0.5) * 2 * radius;
+                d = Math.sqrt(x * x + y * y + z * z);
+            } while (d > radius);
+            return { x, y, z };
+        }
+
+        // Set initial random position
+        let initialPosition = getRandomPointInSphere(boundaryRadius);
+        sphere.position.set(initialPosition.x, initialPosition.y, initialPosition.z);
+
+        // Animation variables
+        let scale = 0.1; // Initial scale
+        const clock = new THREE.Clock();
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // Expand the sphere
+            scale += 0.5 * delta;
+            sphere.scale.set(scale, scale, scale);
+            sphere.rotation.y += 1 * delta; // Rotate for visual effect
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Add reset button
+        const button = document.createElement('button');
+        button.textContent = 'Reset';
+        document.body.appendChild(button);
+        button.addEventListener('click', () => {
+            // Set new random position
+            const newPosition = getRandomPointInSphere(boundaryRadius);
+            sphere.position.set(newPosition.x, newPosition.y, newPosition.z);
+            scale = 0.1;          // Reset scale
+            sphere.rotation.y = 0; // Reset rotation
+        });
+    </script>
+</body>
+</html>
+​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​
