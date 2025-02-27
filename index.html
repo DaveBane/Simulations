@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corrected Expanding Sphere Simulation</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #percentage {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1;
+            color: black;
+            font-size: 16px;
+        }
+        button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <div id="percentage">0%</div>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 10;
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Boundary sphere
+        const boundaryRadius = 5;
+        const boundaryGeometry = new THREE.SphereGeometry(boundaryRadius, 32, 32);
+        const boundaryMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true });
+        const boundarySphere = new THREE.Mesh(boundaryGeometry, boundaryMaterial);
+        scene.add(boundarySphere);
+
+        // Expanding sphere
+        const geometry = new THREE.SphereGeometry(1, 32, 32);
+        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00, shininess: 100 });
+        const sphere = new THREE.Mesh(geometry, material);
+        scene.add(sphere);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(1, 1, 1).normalize();
+        scene.add(directionalLight);
+
+        // Random position inside boundary sphere
+        function getRandomPointInSphere(radius) {
+            let x, y, z, d;
+            do {
+                x = (Math.random() - 0.5) * 2 * radius;
+                y = (Math.random() - 0.5) * 2 * radius;
+                z = (Math.random() - 0.5) * 2 * radius;
+                d = Math.sqrt(x * x + y * y + z * z);
+            } while (d > radius);
+            return { x, y, z };
+        }
+
+        let initialPosition = getRandomPointInSphere(boundaryRadius);
+        sphere.position.set(initialPosition.x, initialPosition.y, initialPosition.z);
+
+        // Animation variables
+        let scale = 0.1;
+        const clock = new THREE.Clock();
+        const boundaryVolume = (4 / 3) * Math.PI * Math.pow(boundaryRadius, 3);
+
+        // Intersection volume function
+        function intersectionVolume(R, r, d) {
+            if (d >= R + r) return 0;
+            if (d <= Math.abs(R - r)) {
+                return (4 / 3) * Math.PI * Math.pow(Math.min(R, r), 3);
+            }
+            const term = (R + r - d) * (R + r - d) * (d * d + 2 * d * (r + R) - 3 * (R - r) * (R - r));
+            return Math.PI * term / (12 * d);
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // Expand sphere
+            scale += 0.5 * delta;
+            sphere.scale.set(scale, scale, scale);
+
+            // Calculate distance and intersection
+            const d = sphere.position.length();
+            const r = scale;
+            const V_intersection = intersectionVolume(boundaryRadius, r, d);
+
+            // Update percentage
+            const percentage = (V_intersection / boundaryVolume) * 100;
+            document.getElementById('percentage').textContent = percentage.toFixed(2) + '%';
+
+            // Stop when boundary is fully occupied (or revert to volume equality)
+            if (V_intersection >= boundaryVolume) {
+                scale = scale; // Stop scaling
+            } else {
+                sphere.rotation.y += 1 * delta;
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Reset button
+        const resetButton = document.createElement('button');
+        resetButton.textContent = 'Reset';
+        document.body.appendChild(resetButton);
+        resetButton.addEventListener('click', () => {
+            const newPosition = getRandomPointInSphere(boundaryRadius);
+            sphere.position.set(newPosition.x, newPosition.y, newPosition.z);
+            scale = 0.1;
+            sphere.scale.set(scale, scale, scale);
+            sphere.rotation.y = 0;
+        });
+    </script>
+</body>
+</html>
+​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​
