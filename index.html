@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expanding Sphere Simulation with Random Start</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #percentage {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1;
+            color: black;
+            font-size: 16px;
+        }
+        button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <div id="percentage">0%</div>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff);
+
+        // Camera setup
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 10;
+
+        // Renderer setup
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Boundary sphere
+        const boundaryRadius = 5;
+        const boundaryGeometry = new THREE.SphereGeometry(boundaryRadius, 32, 32);
+        const boundaryMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true });
+        const boundarySphere = new THREE.Mesh(boundaryGeometry, boundaryMaterial);
+        scene.add(boundarySphere);
+
+        // Expanding sphere
+        const geometry = new THREE.SphereGeometry(1, 32, 32);
+        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00, shininess: 100 });
+        const sphere = new THREE.Mesh(geometry, material);
+        scene.add(sphere);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(1, 1, 1).normalize();
+        scene.add(directionalLight);
+
+        // Function to generate a random point inside the sphere
+        function getRandomPointInSphere(radius) {
+            let x, y, z, d;
+            do {
+                x = (Math.random() - 0.5) * 2 * radius;
+                y = (Math.random() - 0.5) * 2 * radius;
+                z = (Math.random() - 0.5) * 2 * radius;
+                d = x * x + y * y + z * z;
+            } while (d > radius * radius);
+            return { x, y, z };
+        }
+
+        // Set initial random position
+        let initialPosition = getRandomPointInSphere(boundaryRadius);
+        sphere.position.set(initialPosition.x, initialPosition.y, initialPosition.z);
+
+        // Animation variables
+        let scale = 0.1;
+        const clock = new THREE.Clock();
+
+        // Animate function
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            if (scale < boundaryRadius) {
+                scale += 0.5 * delta;
+                if (scale > boundaryRadius) scale = boundaryRadius;
+                sphere.scale.set(scale, scale, scale);
+                sphere.rotation.y += 1 * delta;
+            }
+
+            // Update percentage
+            const percentage = (Math.pow(scale, 3) / Math.pow(boundaryRadius, 3)) * 100;
+            document.getElementById('percentage').textContent = percentage.toFixed(2) + '%';
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Reset button
+        const resetButton = document.createElement('button');
+        resetButton.textContent = 'Reset';
+        document.body.appendChild(resetButton);
+        resetButton.addEventListener('click', () => {
+            // Generate new random position
+            const newPosition = getRandomPointInSphere(boundaryRadius);
+            sphere.position.set(newPosition.x, newPosition.y, newPosition.z);
+            scale = 0.1;
+            sphere.rotation.y = 0;
+        });
+    </script>
+</body>
+</html>
+​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​
