@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Sphere Packing Simulation</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #controls { position: absolute; top: 10px; left: 10px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="sphereCount">Number of Spheres: </label>
+        <input type="number" id="sphereCount" value="100" min="1" max="1000"><br>
+        <label for="boundaryRadius">Boundary Radius: </label>
+        <input type="number" id="boundaryRadius" value="10" min="1" max="100"><br>
+        <label for="scalingSpeed">Scaling Speed: </label>
+        <input type="number" id="scalingSpeed" value="0.005" step="0.001" min="0.001" max="0.1"><br>
+        <button id="startButton">Start Simulation</button>
+        <p>Occupied Space: <span id="percentage">0.00%</span></p>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, boundarySphere, spheres = [], scales = [];
+        let simulationRunning = false;
+        const sphereRadius = 0.5; // Initial radius of small spheres
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 20;
+
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+            const pointLight = new THREE.PointLight(0xffffff, 1);
+            pointLight.position.set(10, 10, 10);
+            scene.add(pointLight);
+
+            // Boundary Sphere
+            const boundaryRadius = parseFloat(document.getElementById('boundaryRadius').value);
+            const boundaryGeometry = new THREE.SphereGeometry(boundaryRadius, 32, 32);
+            const boundaryMaterial = new THREE.MeshStandardMaterial({
+                color: 0xcccccc,
+                transparent: false,
+                wireframe: true
+            });
+            boundarySphere = new THREE.Mesh(boundaryGeometry, boundaryMaterial);
+            scene.add(boundarySphere);
+
+            // Create Spheres
+            const sphereCount = parseInt(document.getElementById('sphereCount').value);
+            const sphereGeometry = new THREE.SphereGeometry(sphereRadius, 16, 16);
+            const sphereMaterial = new THREE.MeshStandardMaterial({
+                color: 0x0077ff,
+                transparent: false,
+                wireframe: false,
+                polygonOffset: true,
+                polygonOffsetFactor: 1,
+                polygonOffsetUnits: 1
+            });
+            for (let i = 0; i < sphereCount; i++) {
+                const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+                const pos = getRandomPointInSphere(boundaryRadius - sphereRadius);
+                sphere.position.set(pos.x, pos.y, pos.z);
+                scene.add(sphere);
+                spheres.push(sphere);
+                scales.push(0.1); // Initial scale
+            }
+
+            // Start Simulation Button
+            document.getElementById('startButton').addEventListener('click', () => {
+                simulationRunning = true;
+            });
+
+            animate();
+        }
+
+        function getRandomPointInSphere(radius) {
+            const u = Math.random();
+            const v = Math.random();
+            const theta = 2 * Math.PI * u;
+            const phi = Math.acos(2 * v - 1);
+            const r = radius * Math.cbrt(Math.random());
+            const x = r * Math.sin(phi) * Math.cos(theta);
+            const y = r * Math.sin(phi) * Math.sin(theta);
+            const z = r * Math.cos(phi);
+            return { x, y, z };
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (simulationRunning) {
+                const scalingSpeed = parseFloat(document.getElementById('scalingSpeed').value);
+                spheres.forEach((sphere, index) => {
+                    // Scale spheres
+                    scales[index] += scalingSpeed;
+                    const scaledRadius = sphereRadius * scales[index];
+
+                    // Check for collisions with other spheres
+                    spheres.forEach((otherSphere, otherIndex) => {
+                        if (index !== otherIndex) {
+                            const distance = sphere.position.distanceTo(otherSphere.position);
+                            const otherScaledRadius = sphereRadius * scales[otherIndex];
+                            if (distance < scaledRadius + otherScaledRadius) {
+                                // Move spheres apart
+                                const direction = sphere.position.clone().sub(otherSphere.position).normalize();
+                                const overlap = (scaledRadius + otherScaledRadius) - distance;
+                                sphere.position.add(direction.multiplyScalar(overlap / 2));
+                                otherSphere.position.sub(direction.multiplyScalar(overlap / 2));
+                            }
+                        }
+                    });
+
+                    // Check for collision with boundary
+                    const boundaryRadius = parseFloat(document.getElementById('boundaryRadius').value);
+                    const distanceToCenter = sphere.position.length();
+                    if (distanceToCenter + scaledRadius > boundaryRadius) {
+                        const direction = sphere.position.clone().normalize();
+                        sphere.position.copy(direction.multiplyScalar(boundaryRadius - scaledRadius));
+                    }
+
+                    // Update sphere scale
+                    sphere.scale.set(scales[index], scales[index], scales[index]);
+                });
+
+                // Calculate occupied space
+                const boundaryRadius = parseFloat(document.getElementById('boundaryRadius').value);
+                const totalVolume = (4 / 3) * Math.PI * Math.pow(boundaryRadius, 3);
+                let occupiedVolume = 0;
+                spheres.forEach(sphere => {
+                    const scaledRadius = sphereRadius * sphere.scale.x;
+                    occupiedVolume += (4 / 3) * Math.PI * Math.pow(scaledRadius, 3);
+                });
+                const percentage = (occupiedVolume / totalVolume) * 100;
+                document.getElementById('percentage').textContent = percentage.toFixed(2) + '%';
+
+                // Stop when space is full
+                if (percentage >= 99.9) {
+                    simulationRunning = false;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        init();
+
+        // Reset button
+        const resetButton = document.createElement('button');
+        resetButton.textContent = 'Reset';
+        document.body.appendChild(resetButton);
+        resetButton.addEventListener('click', () => {
+            const boundaryRadius = parseFloat(document.getElementById('boundaryRadius').value);
+            spheres.forEach(sphere => {
+                const pos = getRandomPointInSphere(boundaryRadius - sphereRadius);
+                sphere.position.set(pos.x, pos.y, pos.z);
+                sphere.scale.set(0.1, 0.1, 0.1);
+            });
+            scales.fill(0.1);
+            simulationRunning = true;
+        });
+    </script>
+</body>
+</html>
+​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​
