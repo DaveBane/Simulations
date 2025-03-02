@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expanding Spheres with Rotation Control</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #percentage {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: black;
+            font-size: 16px;
+        }
+        button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Load Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.js"></script>
+    <div id="percentage">0%</div>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 15;
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Add OrbitControls for rotation
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // Smooth rotation with inertia
+        controls.dampingFactor = 0.05; // Adjust damping strength
+
+        // Boundary sphere
+        const boundaryRadius = 5;
+        const boundary = new THREE.Mesh(
+            new THREE.SphereGeometry(boundaryRadius, 32, 32),
+            new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true })
+        );
+        scene.add(boundary);
+
+        // Sphere creation with clipping
+        function createSphere(color) {
+            const material = new THREE.MeshPhongMaterial({ color, shininess: 100 });
+            material.onBeforeCompile = (shader) => {
+                shader.uniforms.boundaryRadius = { value: boundaryRadius };
+                shader.vertexShader = 'varying vec3 vWorldPosition;\n' + shader.vertexShader;
+                shader.vertexShader = shader.vertexShader.replace(
+                    'void main() {',
+                    'void main() {\n    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;'
+                );
+                shader.fragmentShader = 'uniform float boundaryRadius;\nvarying vec3 vWorldPosition;\n' + shader.fragmentShader;
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    'void main() {',
+                    'void main() {\n    float dist = length(vWorldPosition);\n    if (dist > boundaryRadius) discard;'
+                );
+            };
+            return new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), material);
+        }
+
+        // Initialize spheres
+        const spheres = [createSphere(0x00ff00), createSphere(0x0000ff)];
+        spheres.forEach(sphere => {
+            const pos = getRandomPointInSphere(boundaryRadius);
+            sphere.position.set(pos.x, pos.y, pos.z);
+            sphere.t_start = compute_t_start();
+            scene.add(sphere);
+        });
+
+        // Lighting
+        scene.add(new THREE.AmbientLight(0x404040));
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(1, 1, 1).normalize();
+        scene.add(light);
+
+        // Grid for occupancy
+        const gridResolution = 20;
+        const gridSpacing = boundaryRadius * 2 / gridResolution;
+        const gridPoints = [];
+        for (let x = -boundaryRadius; x <= boundaryRadius; x += gridSpacing) {
+            for (let y = -boundaryRadius; y <= boundaryRadius; y += gridSpacing) {
+                for (let z = -boundaryRadius; z <= boundaryRadius; z += gridSpacing) {
+                    if (x * x + y * y + z * z <= boundaryRadius * boundaryRadius) {
+                        gridPoints.push(new THREE.Vector3(x, y, z));
+                    }
+                }
+            }
+        }
+        const totalGridPoints = gridPoints.length;
+
+        // Utility functions
+        function getRandomPointInSphere(radius) {
+            let x, y, z, d;
+            do {
+                x = (Math.random() - 0.5) * 2 * radius;
+                y = (Math.random() - 0.5) * 2 * radius;
+                z = (Math.random() - 0.5) * 2 * radius;
+                d = x * x + y * y + z * z;
+            } while (d > radius * radius);
+            return { x, y, z };
+        }
+
+        function compute_t_start() {
+            const U = Math.random();
+            const lambda0 = 1;
+            const alpha = 0.5;
+            const term = 1 + (alpha / lambda0) * (-Math.log(1 - U));
+            return (1 / alpha) * Math.log(term);
+        }
+
+        // Animation loop
+        const clock = new THREE.Clock();
+        let startTime = 0;
+        let simulationRunning = true;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const totalTime = clock.getElapsedTime() - startTime;
+
+            if (simulationRunning) {
+                spheres.forEach(sphere => {
+                    if (totalTime >= sphere.t_start) {
+                        const timeSinceStart = totalTime - sphere.t_start;
+                        const scale = 0.1 + 0.5 * timeSinceStart;
+                        sphere.scale.set(scale, scale, scale);
+                        sphere.rotation.y = 1 * timeSinceStart;
+                    } else {
+                        sphere.scale.set(0, 0, 0);
+                        sphere.rotation.y = 0;
+                    }
+                });
+
+                // Occupancy calculation
+                let occupiedPoints = 0;
+                gridPoints.forEach(point => {
+                    for (let sphere of spheres) {
+                        const dist = point.distanceTo(sphere.position);
+                        if (dist < sphere.scale.x) {
+                            occupiedPoints++;
+                            break;
+                        }
+                    }
+                });
+                const percentage = (occupiedPoints / totalGridPoints) * 100;
+                document.getElementById('percentage').textContent = percentage.toFixed(2) + '%';
+
+                if (percentage >= 99.9) {
+                    simulationRunning = false;
+                }
+            }
+
+            // Update controls for rotation
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Reset button
+        const resetButton = document.createElement('button');
+        resetButton.textContent = 'Reset';
+        document.body.appendChild(resetButton);
+        resetButton.addEventListener('click', () => {
+            startTime = clock.getElapsedTime();
+            spheres.forEach(sphere => {
+                const pos = getRandomPointInSphere(boundaryRadius);
+                sphere.position.set(pos.x, pos.y, pos.z);
+                sphere.t_start = compute_t_start();
+            });
+            simulationRunning = true;
+        });
+    </script>
+</body>
+</html>
+​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​
